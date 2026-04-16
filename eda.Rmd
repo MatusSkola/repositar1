@@ -1,0 +1,674 @@
+---
+title: "eda"
+author: "m"
+date: "2026-04-09"
+output: html_document
+---
+
+```{r}
+library(reticulate)
+reticulate::py_require("numpy")
+reticulate::py_require("pandas")
+reticulate::py_require("seaborn")
+reticulate::py_require("matplotlib")
+```
+
+# Načítanie a prvý prehľad dát
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# načítanie datasetu
+df = pd.read_csv("titanic.csv")
+
+#Zistite počet riadkov a stĺpcov.
+df.shape
+
+#Vypíšte prvých 5 riadkov.
+df.head()
+
+#Zistite dátové typy jednotlivých premenných. 
+df.dtypes
+
+
+```
+
+**Numerické premenné:** Age, Fare, SibSp, Parch, Pclass
+
+**Kategorické premenné:** Sex, Embarked, Pclass, Survived
+
+**Identifikátory:** PassangerId, Name, Ticket, Cabin
+
+**Jednotka pozorovania = jeden pasažier lode Titanic**
+
+Riadok predstavuje informáciu o jednom pasažierovi lode
+
+-   **PassengerId** – identifikátor pasažiera
+
+-   **Survived** – či pasažier prežil (0 = neprežil, 1 = prežil)
+
+-   **Pclass** – cestovná trieda (1, 2, 3)
+
+-   **Name** – meno pasažiera
+
+-   **Sex** – pohlavie
+
+-   **Age** – vek
+
+-   **SibSp** – počet súrodencov/manželov na palube
+
+-   **Parch** – počet rodičov/detí na palube
+
+-   **Ticket** – číslo lístka
+
+-   **Fare** – cena cestovného
+
+-   **Cabin** – kajuta
+
+-   **Embarked** – prístav nalodenia
+
+### Otázky na interpretáciu:
+
+**Je každé pozorovanie jeden pasažier?**
+
+Áno - každý riadok datasetu predstavuje jedného pasažiera a obashuje jeho charakteristiky
+
+**Ktoré premenné sú vhodné na analýzu prežitia?**
+
+Premenné ktoré môžu ovplyvňovať to či osoba prežila:
+
+1.  Sex - veľmi dôležité (historicky mali ženy väčšiu šancu prežiť)
+
+2.  Age - deti vs dospelí
+
+3.  Pclass - soc. status/prístup k člnom
+
+4.  Fare - to isté čo Pclass
+
+5.  SibSp - rodinné vzťahy
+
+6.  Parch - rodinné vzťahy
+
+**Ktoré premenné by sme zatiaľ nepoužili?**
+
+1.  PassangerId - slúži len na identifikáciu, nedá sa použiť na žiadne vzorce
+2.  Name - textová premenná
+3.  Ticket - ťažko interpretovateľná
+4.  Cabin - veľa chýbajúcich hodnôt - kód nižšie, chýba až 77% hodnôt
+
+```{python}
+df.isnull().sum()
+
+df.isnull().mean()*100
+```
+
+# Základné sumarizačné štatistiky
+
+```{python}
+#Vypočítajte základné popisné štatistiky pre numerické premenné.
+df.describe()
+
+#Pre kategorické premenné vytvorte tabuľky početností.
+df["Sex"].value_counts()
+df["Embarked"].value_counts()
+df["Pclass"].value_counts()
+df["Survived"].value_counts()
+
+#Zistite celkový podiel preživších pasažierov.
+df["Survived"].mean().round(4)*100 
+```
+
+### Otázky na interpretáciu:
+
+**Aký je približný podiel preživších?**
+
+Prežilo približne 38% ľudí
+
+**Sú numerické premenné symetrické, alebo naznačujú šikomsť?**
+
+Dáta naznačujú šikmosť (pravostrannú). Mean \> Median.
+
+```{python}
+df.skew(numeric_only=True)
+```
+
+**Ktoré kategórie sú v dátach najčastejšie?**
+
+Otázka je trochu nejasne formulovaná – pochopil som ju tak, že mám zistiť, ktorá hodnota (kategória) sa najčastejšie vyskytuje v jednotlivých kategorizovaných premenných
+
+```{python}
+df['Sex'].value_counts().idxmax()
+df['Pclass'].value_counts().idxmax()
+df['Embarked'].value_counts().idxmax()
+df["Survived"].value_counts().idxmax()
+```
+
+# Chýbajúce hodnoty
+
+```{python}
+#Zistite počet chýbajúcich hodnôt v každom stĺpci.
+df.isnull().sum()
+
+#Vypočítajte aj podiel chýbajúcich hodnôt v percentách.
+df.isnull().mean()*100
+
+#Vizualizujte missing values vhodným spôsobom.
+sns.heatmap(df.isnull(), cbar=False)
+plt.show()
+
+#Identifikujte premenné, kde je problém najvýraznejší.
+#Najväčší problém = Cabin - 77% chýba
+#Age chýba 20% cca
+#V Embarked chýba tiež pár hodnôt
+```
+
+Stratégia čistenia:
+
+1.  Cabin = zahodiť stĺpec, príliš veľa chýbajúcich hodnôt
+2.  Embarked = doplniť najčastejšou hodnotou, alebo odstranit tie riadk kde chybaju data
+3.  Age = nahradit cisla pomocou medianu
+
+### Otázky na interpretáciu:
+
+**Ktorá premenná je najproblematickejšia z pohľadu chýbajúcich hodnôt?**
+
+Najproblematickejšia je premenná Cabin, keďže chýba až 77% hodnôt.
+
+Kde by dávalo väčší zmysel imputovať a kde radšej premennú vypustiť?
+
+1.  Age - imputovať (dôležitá premenná)
+2.  Cabin - vypustiť (veľa chýbajúcich hodnôt)
+3.  Embarked - imputovať (málo chýbajúcich)
+
+# Univariačná EDA - jedna premenná
+
+```{python}
+#Vizualizujte distribúciu premennej Age pomocou histogramu a boxplotu. Stručne okomentujte tvar rozdelenia a výskyt extrémnych hodnôt.
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# vytvorenie priestoru pre 2 grafy vedľa seba
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+sns.histplot(
+    data=df,
+    x='Age',
+    bins=30,
+    kde=True,
+    ax=axes[0]
+)
+
+axes[0].set_title('Histogram veku')
+
+sns.boxplot(
+    x=df['Age'],
+    ax=axes[1]
+)
+
+axes[1].set_title('Boxplot veku')
+
+plt.show()
+
+#Vizualizujte distribúciu premennej Fare pomocou histogramu a boxplotu. Posúďte, či ide o symetrické alebo šikmé rozdelenie.
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+sns.histplot(
+    data=df,
+    x='Fare',
+    bins=30,
+    kde=True,
+    ax=axes[0]
+)
+
+axes[0].set_title('Histogram Fare')
+
+
+sns.boxplot(
+    x=df['Fare'],
+    ax=axes[1]
+)
+
+axes[1].set_title('Boxplot Fare')
+
+plt.show()
+
+
+```
+
+Interpretácia pre AGE:
+
+Väčšina cestujúcich má vek približne medzi 20 a 40 rokov. Rozdelenie je mierne pravostranné, keďže sa vyskytujú aj vyššie veky. V boxplote vidno niekoľko extrémnych hodnôt, najmä starších pasažierov nad 65 rokov
+
+```{python}
+#Vizualizujte distribúciu premennej Fare pomocou histogramu a boxplotu. Posúďte, či ide o symetrické alebo šikmé rozdelenie.
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+sns.histplot(
+    data=df,
+    x='Fare',
+    bins=30,
+    kde=True,
+    ax=axes[0]
+)
+
+axes[0].set_title('Histogram Fare')
+
+
+sns.boxplot(
+    x=df['Fare'],
+    ax=axes[1]
+)
+
+axes[1].set_title('Boxplot Fare')
+
+plt.show()
+
+```
+
+Interpretácia pre FARE:
+
+Premenná Fare má silne pravostranné rozdelenie. Väčšina cestujúcich platila nižšie ceny, zatiaľ čo niekoľko pasažierov zaplatilo veľmi vysoké sumy. Rozdelenie teda nie je symetrické, ale výrazne šikmé doprava.
+
+```{python}
+#Preskúmajte počet súrodencov/manželov (SibSp) a rodičov/detí (Parch) na #palube. Aké hodnoty prevládajú?
+
+df["SibSp"].value_counts().sort_index()
+
+df["Parch"].value_counts().sort_index()
+
+
+```
+
+Väčšina ľudí cestovala bez rodičova a bez detí.
+
+```{python}
+#Preskúmajte rozdelenie premennej Survived. Koľko cestujúcich prežilo a koľko neprežilo?
+df["Survived"].value_counts().sort_index()
+
+
+```
+
+Z datasetu vyplýva že 342 cestujúcich prežilo a 549 zomrelo. Väčšia časť teda neprežila.
+
+```{python}
+#Preskúmajte rozdelenie premennej Pclass. Ktorá trieda je v datasete zastúpená najviac?
+df["Pclass"].value_counts().sort_index()
+```
+
+Najviac je zastúpená 3. trieda, väčšina ľudí cestovala v tej najnižšej triede.
+
+```{python}
+#Preskúmajte rozdelenie premennej Sex. Aké je zastúpenie mužov a žien?
+df["Sex"].value_counts().sort_index()
+```
+
+Muži tvoria väčšinu pasažierov.
+
+### Otázky na interpretáciu:
+
+**Ktoré numerické premenné sú silno pravostranné?**
+
+Premenná Fare je silno pravostranná. - Väčšina cestujúcich mala lacný lístok, zopár cestujúcich malo lístok v prvej triede.
+
+Premenná Age je mierne pravostranná. - Zopár pasažierov má vysoký vek, väčšina okolo 20-40.
+
+**Kde vidno potenciálne outliery?**
+
+Potenciálne outliery sa môžu nachádzať pri premenných Fare(vysoké ceny lístkov) a Age(vysoký vek pasažierov).
+
+**Sú triedy a pohlavie v datasete zastúpené vyvážene?**
+
+Ani triedy ani pohlavia nie sú vyvážené.
+
+# Outliery a podozrivé hodnoty
+
+```{python}
+#Pomocou boxplotov a/alebo QR pravidla identifikujte outliery v Age a Fare.
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+#Age
+plt.figure(figsize=(8, 4))
+
+sns.boxplot(
+    x=df['Age']
+)
+
+plt.title('Boxplot Age')
+plt.xlabel('Vek')
+plt.show()
+
+#Fare
+plt.figure(figsize=(8, 4))
+
+sns.boxplot(
+    x=df['Fare']
+)
+
+plt.title('Boxplot Fare')
+plt.xlabel('Cena lístka')
+plt.show()
+
+
+```
+
+```{python}
+#Skontrolujte, či sú v dátach nulové alebo extrémne neobvyklé hodnoty.
+df["Age"].min()
+df["Age"].max()
+
+df["Fare"].min()
+df["Fare"].max()
+```
+
+Rozhodnite či by ste outliery:
+
+1.  Ponechali
+2.  Odstránili
+3.  Transformovali
+4.  Len ďalej sledovali
+
+Pri premennej "Age" by som outliery ponechal tak ako sú - najvyšší vek je 80 čo je úplne reálne číslo a najnižší je 0.42 čo môže byť prepočet veku niekoľko mesačného bábätka na roky.
+
+Pri premennej "Fare" by som outliery ponechal - najvyššia suma je 512 čo je úplne vporiadku, a najnižšia suma je 0 čo môže byť tiež v poriadku, môže sa jednať o personál.
+
+### Otázky na interpretáciu:
+
+**Je vysoká cena cestovného chyba alebo realistická hodnta?**
+
+Je to realistická hodnota - pasažieri v 1. triede mohli mať veľmi drahé kajuty
+
+**Je vek 0 alebo veľmi nízky vek problém, alebo reálna hodnota?**
+
+Je to reálna hodnota. - na palube mohli byť deti.
+
+**Prečo nie je vhodné odstraňovať outliery automaticky bez kontextu?**
+
+Môžu obsahovať reálne dáta. Ich odstránenie môže skresliť analýzu.
+
+# Bivariačná EDA - vzťah k prežitiu
+
+```{python}
+#Preskúmajte vzťah medzi Survived a týmito premennými: Sex, Pclass, Embarke,Age, Fare, SibSp, Parch
+
+#z časových dôvodov preskúmam vzťah medzi Survived a Sex, Pclass, Embarked a Fare
+
+#Sex
+plt.figure(figsize=(8, 5))
+
+sns.countplot(
+    data=df,
+    x='Sex',
+    hue='Survived'
+)
+
+plt.title('Prežitie podľa pohlavia')
+plt.xlabel('Pohlavie')
+plt.ylabel('Počet')
+plt.show()
+
+#Pclass
+plt.figure(figsize=(8, 5))
+
+sns.countplot(
+    data=df,
+    x='Pclass',
+    hue='Survived'
+)
+
+plt.title('Prežitie podľa triedy')
+plt.xlabel('Trieda')
+plt.ylabel('Počet')
+plt.show()
+
+#Embarked
+plt.figure(figsize=(8, 5))
+
+sns.countplot(
+    data=df,
+    x='Embarked',
+    hue='Survived'
+)
+
+plt.title('Prežitie podľa prístavu nástupu')
+plt.xlabel('Embarked')
+plt.ylabel('Počet')
+plt.show()
+
+#Fare
+#Neviem ako by som to interpretoval grafom, ale takto by to mohlo byť dobre
+df.groupby('Survived')['Fare'].median()
+
+```
+
+Miera prežitia sa výrazne líši podľa pohlavia. - Ženy mali výrazne vyššiu šancu na prežitie ako muži.
+
+Miera prežitia sa líšila aj podľa triedy. - Cestujúci z 1. triedy mali vyššiu šancu na prežitie ako cestujúci z 3. triedy.
+
+Pri premennej Embarked sú rozdiely v prežití menej výrazne a vzťah sa javí byť slabší.
+
+Dáta v premennej Fare naznačujú že väčšiu šancu na prežitie mali ľudia s drahším cestovným lístkom
+
+### Otázky na interpretáciu:
+
+**Ktoré dve premenné najviac súvisia s prežitím?**
+
+Sú to premenné "Sex" a "Pclass"
+
+**Ktoré vzťahy sú zrejmé a ktroré slabé?**
+
+Zrejmé: Sex, Pclass, Fare
+
+Slabé: Embarked
+
+**Kde treba byť optarný?**
+
+Opatrný by som bol pri premennej Fare.
+
+Medzi vyšším Fare a prežitím je vzťah. - ale to ešte neznamená že vyššia cena spôsobila prežitie, možno mali ľudia z 1. triedy kratšiu cestu k záchranným člnom
+
+# Multivariačná EDA
+
+```{python}
+#Vytvorte korelačnú maticu pre numerické premenné.
+numericke_premenne = [
+    'Age',
+    'Fare',
+    'SibSp',
+    'Parch',
+    'Pclass',
+    'Survived'
+]
+korelacna_matica = df[numericke_premenne].corr()
+
+print(korelacna_matica)
+
+#Vizualizujte ju heatmapou.
+plt.figure(figsize=(10, 6))
+
+sns.heatmap(
+    korelacna_matica,
+    annot=True,
+    cmap='coolwarm',
+    fmt='.2f'
+)
+
+plt.title('Korelačná matica')
+plt.show()
+
+#Preskúmajte aspoň jeden vzťah, kde vstupujú naraz tri premenné,
+#Skúste použiť faceting alebo rozdelenie grafov podľa kategórie.
+#Survived x Pclass x Sex
+g = sns.catplot(
+    data=df,
+    x='Sex',
+    hue='Survived',
+    col='Pclass',
+    kind='count',
+    height=5,
+    aspect=0.8
+)
+
+g.fig.suptitle('Prežitie podľa pohlavia a triedy', y=1.05)
+plt.show()
+
+```
+
+### **Otázky na interpretáciu:**
+
+**Mení sa vzťah medzi pohlavím a prežitím v rôznych triedach?**
+
+Áno mení sa. - Vo všetkých triedach prežívali ženy častejšie pričom rozdiel bol najvýraznejší v 3. triede. Zároveň sa nám utvrdzuje domninenka že prvá a druhá trieda mala väčšiu šancu na prežietie(hlavne pre ženy) z nejakého dôvodu.
+
+**Je účinok jednej premennej rovnaký vo všetkých skupinách?**
+
+Nie - účinok pohlavia sa líši podľa triedy.
+
+**Vidno interakcie ktoré by pri bivariačnej analýze ostali skryté?**
+
+Áno, multivariačná analýza odhalila interakcie medzi pohlavím, triedou a prežitím, ktoré by pri jednoduchej bivariačnej analýze nemuseli byť viditeľné.
+
+# Jednoduchý feature engineering pre EDA
+
+```{python}
+#Vytvorte aspoň 2 nové premenné: FamilySize, IsAlone
+
+df["FamilySize"] = df["SibSp"] + df["Parch"] + 1
+df["FamilySize"]
+
+df["IsAlone"] = 0
+df.loc[df["FamilySize"] == 1, "IsAlone"] = 1
+df["IsAlone"]
+
+#Preskúmajte distribúciu nových premenných.
+
+#FamilySize
+plt.figure(figsize=(8, 5))
+
+sns.countplot(
+    data=df,
+    x='FamilySize'
+)
+
+plt.title('Rozdelenie FamilySize')
+plt.xlabel('Veľkosť rodiny')
+plt.ylabel('Počet')
+plt.show()
+
+#IsAlone
+plt.figure(figsize=(6, 4))
+
+sns.countplot(
+    data=df,
+    x='IsAlone'
+)
+
+plt.title('Cestoval pasažier sám')
+plt.xlabel('0 = nie, 1 = áno')
+plt.ylabel('Počet')
+plt.show()
+
+#FamilySize x Survived
+plt.figure(figsize=(8, 5))
+
+sns.barplot(
+    data=df,
+    x='FamilySize',
+    y='Survived'
+)
+
+plt.title('Prežitie podľa veľkosti rodiny')
+plt.xlabel('FamilySize')
+plt.ylabel('Miera prežitia')
+plt.show()
+
+#IsAlone x Survived
+plt.figure(figsize=(6, 4))
+
+sns.barplot(
+    data=df,
+    x='IsAlone',
+    y='Survived'
+)
+
+plt.title('Prežitie podľa IsAlone')
+plt.xlabel('0 = s rodinou, 1 = sám')
+plt.ylabel('Miera prežitia')
+plt.show()
+```
+
+**Zdôvodnite, prečo by tieto nové premenné mohli byť užitočné aj pri modelovaní.**
+
+Nové premenné FamilySize a IsAlone môžu byť užitočné pri modelovaní, pretože lepšie vystihujú sociálny kontext pasažiera. Premenná FamilySize spája informácie o rodinných príslušníkoch do jednej hodnoty a umožňuje modelu ľahšie zachytiť vplyv veľkosti rodiny na prežitie. Premenná IsAlone zasa poskytuje jednoduchú informáciu o tom, či pasažier cestoval sám, čo môže byť významný faktor pri predikcii prežitia.
+
+# Návrh čistenia a prípravy dát
+
+**Ktoré premenné ponechať:**
+
+1.  Pclass - veľmi silný vzťah s prežitím
+2.  Sex - tak isto ako pclass
+3.  Age - doplnkový efekt
+4.  Fare - vzťah s prežitím
+5.  Embarked
+6.  SibSp
+7.  Parch
+8.  FamilySize - nová užitčná premenná
+9.  IsAlone - nová užitčná premenná
+
+**Ktoré odstrániť:**
+
+Cabin - príliš veľa chýbajúcich hodnôt
+
+**Ako ošetriť missing values?**
+
+```{python}
+df_clean = df.copy()
+#missing values v age
+df_clean["Age"] = df_clean["Age"].fillna(df_clean["Age"].median())
+
+#missing values v embarked
+df_clean["Embarked"] = df_clean["Embarked"].fillna(df["Embarked"].mode()[0])
+
+#odstranenie stlpca cabin
+df_clean = df_clean.drop(columns = ["Cabin"])
+
+df.isnull().sum()
+df_clean.isnull().sum()
+```
+
+**Ako zakódovať kategórie?**
+
+```{python}
+#premennu sex zmenim na cisla 0 a 1
+#pouzijem uz df_clean
+df_clean["Sex"] = df_clean["Sex"].map({
+  "male": 0,
+  "female": 1
+})
+
+#premenna embarked
+df_clean["Embarked"].unique()
+#vypisem si unikatne hodnoty nech viem co mapovat
+
+df_clean["Embarked"] = df_clean["Embarked"].map({
+  "S": 1,
+  "C": 2,
+  "Q": 3,
+})
+```
+
+**Ktoré nové premenné ponechať?**
+
+1.  IsAlone
+2.  FamilySize
+
+Eda ukázala že majú súvis s prežitím
+
+**Má zmysel škálovanie?**
+
+Škálovanie má zmysel podľa toho aký model robíme.

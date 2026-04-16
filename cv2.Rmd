@@ -1,0 +1,115 @@
+---
+title: "Untitled"
+author: "vd"
+date: "2026-03-05"
+output: html_document
+---
+
+```{r}
+library(reticulate)
+reticulate::py_require("ucimlrepo")
+```
+
+# **Načítanie a prvý pohľad na dáta**
+
+```{python}
+from ucimlrepo import fetch_ucirepo
+bank = fetch_ucirepo(id=222)
+X = bank.data.features
+y = bank.data.targets
+df = X.copy()
+df["y"] = y
+```
+
+```{python}
+df ["y"]
+```
+
+```{python}
+df["balance"].min()
+```
+
+```{python}
+df["balance"].max()
+```
+
+```{python}
+df["balance"].mean()
+#priemer = mean
+```
+
+```{python}
+df["balance"].std()
+#smerodajna odchylka= std
+```
+
+```{python}
+df["balance"].median()
+
+```
+
+```{python}
+df.describe()
+#ukáže mi všetky hodnoty 
+```
+
+```{python}
+#Zobrazte jeho prvých 5 riadkov.
+df.head(5)
+#Zistite a zobrazte počet riadkov a stĺpcov datasetu.
+df.shape
+#Zistite dátové typy jednotlivých stĺpcov (atribútov, premenných).
+df.dtypes
+#Zobrazte názvy všetkých stĺpcov.
+df.columns
+#Zistite počet hodnôt v premennej y.
+df['y'].value_counts()
+#Zistite unikátne hodnoty v premennej education.
+df['education'].unique()
+#Ktorý stĺpec datasetu má najviac unikátnych hodnôt? 
+df.nunique()
+```
+
+# **Deskriptívne štatistiky**
+
+```{python}
+#Použite príkaz df.describe().
+df.describe()
+#priemerný vek
+df["age"].mean()
+#medián zostatku (balance)
+df["balance"].median()
+#minimum a maximum duration of call
+df['duration'].min()
+df['duration'].max()
+#Porovnajte priemer a medián atribútu balance. Rozdelenie nie je symetrické :(
+df['balance'].mean()
+df['balance'].median()
+#Zistite štandardnú odchýlku pre atribút campaign
+df["campaign"].std()
+#Koľko klientov má záporný zostatok? 
+(df['balance'] < 0).sum()
+```
+
+# Výber stĺpcov a riadkov 
+
+```{python}
+#Vyberte stĺpce age, job, balance.
+nova= df [["age","job","balance"]]
+#Uložte ich do novej premennej s vhodným názvom 
+nova
+#Zobrazte prvých 10 riadkov pomocou fcie iloc.
+nova.iloc[0:10]
+#Zobrazte posledný riadok datasetu. 
+df.iloc[-1]
+#Vyberte iba číselné stĺpce.
+df_numeric = df.select_dtypes(include='number')
+df_numeric
+#Zistite, aký typ objektu vracajú príkazy df['age'],  df[['age']]
+type(df['age'])
+type(df[['age']])
+#type(df['age']) vybera stlpec ako series
+#type(df[['age']]) vybera stlpec ako dataframe
+
+
+```
