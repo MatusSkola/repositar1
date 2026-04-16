@@ -99,6 +99,8 @@ Premenné ktoré môžu ovplyvňovať to či osoba prežila:
 3.  Ticket - ťažko interpretovateľná
 4.  Cabin - veľa chýbajúcich hodnôt - kód nižšie, chýba až 77% hodnôt
 
+nove pridane nieco haa
+
 ```{python}
 df.isnull().sum()
 
